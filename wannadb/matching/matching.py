@@ -129,6 +129,7 @@ class RankingBasedMatcher(BaseMatcher):
                 continue
 
             remaining_documents: List[Document] = []
+            confirmed_matches_this_attribute: List[InformationNugget] = []
 
             # compute initial distances as distances to label
             logger.info("Compute initial distances and initialize documents.")
@@ -311,8 +312,10 @@ class RankingBasedMatcher(BaseMatcher):
                     feedback_result["document"].nuggets.append(confirmed_nugget)
                     feedback_result["document"].attribute_mappings[attribute.name] = [confirmed_nugget]
                     remaining_documents.remove(feedback_result["document"])
+                    confirmed_matches_this_attribute.append(confirmed_nugget)
 
                     # update the distances for the other documents
+                    nugget_distance_tuple_list = []
                     for document in remaining_documents:
                         new_distances: np.ndarray = self._distance.compute_distances(
                             [confirmed_nugget],
@@ -320,6 +323,7 @@ class RankingBasedMatcher(BaseMatcher):
                             statistics["distance"]
                         )[0]
                         for nugget, new_distance in zip(document.nuggets, new_distances):
+                            nugget_distance_tuple_list.append((nugget, new_distance))
                             if distances_based_on_label or new_distance < nugget[CachedDistanceSignal]:
                                 nugget[CachedDistanceSignal] = new_distance
                         for ix, nugget in enumerate(document.nuggets):
@@ -329,7 +333,12 @@ class RankingBasedMatcher(BaseMatcher):
                     distances_based_on_label = False
 
                     # Find more nuggets that are similar to this match
-                    additional_nuggets: List[Tuple[Document, int, int]] = self._find_additional_nuggets(confirmed_nugget, remaining_documents)
+                    additional_nuggets: List[Tuple[Document, int, int]] = self._find_additional_nuggets(
+                        confirmed_nugget,
+                        remaining_documents,
+                        confirmed_matches=confirmed_matches_this_attribute,
+                        nugget_distance_tuples=nugget_distance_tuple_list
+                    )
                     statistics[attribute.name]["num_additional_nuggets"] += len(additional_nuggets)
                     if len(additional_nuggets) == 0:
                         continue
@@ -358,6 +367,7 @@ class RankingBasedMatcher(BaseMatcher):
                     statistics[attribute.name]["num_confirmed_match"] += 1
                     feedback_result["nugget"].document.attribute_mappings[attribute.name] = [feedback_result["nugget"]]
                     remaining_documents.remove(feedback_result["nugget"].document)
+                    confirmed_matches_this_attribute.append(feedback_result["nugget"])
 
                     # update the distances for the other documents
                     for document in remaining_documents:
